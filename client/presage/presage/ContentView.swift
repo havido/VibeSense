@@ -1,5 +1,6 @@
 import SwiftUI
 import SmartSpectraSwiftSDK
+internal import AVFoundation
 
 struct ContentView: View {
     @ObservedObject var sdk = SmartSpectraSwiftSDK.shared
@@ -7,6 +8,8 @@ struct ContentView: View {
     @State private var isVitalMonitoringEnabled: Bool = false
     @State private var showCameraFeed: Bool = false
     @State private var averagesTimer: Timer? = nil
+    @State private var isCameraFeedVisible: Bool = false
+    @State private var isUsingBackCamera: Bool = true
 
     init() {
         // (Required) Authentication. Only need to use one of the two options: API Key or Oauth below
@@ -20,100 +23,126 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack {
-            GroupBox(label: Text("VibeSense")) {
-                ContinuousVitalsPlotView()
-                Grid {
-                    GridRow {
-                        Text("Status: \(vitalsProcessor.statusHint)")
-                    }
-                    GridRow {
+        GeometryReader { geo in
+            VStack(spacing: 8) {
+                // App Title
+                Image("logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: geo.size.width * 0.3)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+
+                // Camera Frame with overlayed metrics
+                ZStack(alignment: .topLeading) {
+                    // Background rounded rectangle to define the frame
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemBackground))
+                        .overlay(
+                            Group {
+                                if let image = vitalsProcessor.imageOutput {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                } else {
+                                    if #available(iOS 17.0, *) {
+                                        ContentUnavailableView {
+                                            Label("Camera Feed", systemImage: "camera.fill")
+                                        } description: {
+                                            if !isVitalMonitoringEnabled {
+                                                Text("Start monitoring to see live frames")
+                                            } else {
+                                                Text("Starting camera feed...")
+                                            }
+                                        }
+                                    } else {
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "camera.fill")
+                                                .font(.largeTitle)
+                                                .foregroundColor(.secondary)
+                                            Text("Camera Feed")
+                                                .font(.headline)
+                                                .foregroundColor(.secondary)
+                                            if !isVitalMonitoringEnabled {
+                                                Text("Start monitoring to see live frames")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            } else {
+                                                Text("Starting camera feed...")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        )
+                    
+                    // Toggle button in top-right corner
+                    VStack {
                         HStack {
-                            Button(isVitalMonitoringEnabled ? "Stop": "Start") {
-                                isVitalMonitoringEnabled.toggle()
-                                if(isVitalMonitoringEnabled) {
-                                    startVitalsMonitoring()
-                                } else {
-                                    stopVitalsMonitoring()
-                                }
+                            Spacer()
+                            Button(action: {
+                                isCameraFeedVisible.toggle()
+                                toggleCameraFeedDisplay(enabled: isCameraFeedVisible)
+                            }) {
+                                Image(systemName: isCameraFeedVisible ? "eye.slash" : "eye")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(8)
+                                    .background(.ultraThinMaterial, in: Circle())
                             }
                         }
+                        Spacer()
                     }
+                    .padding(8)
                 }
-                .padding(.horizontal, 10)
-            }
-        
-            Button {
-                    sendGeminiRequest()
-                    } label: {
-                        Text("GEMINI")
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 128)
-                            .background(Color.red)
-                            .cornerRadius(16)
-                            .shadow(radius: 8)
-                    }
-                    .padding(.horizontal)
-            // Camera Preview Toggle
-            HStack {
-                Text("Camera Preview")
-                Spacer()
-                Toggle("", isOn: $showCameraFeed)
-                    .onChange(of: showCameraFeed) { newValue in
-                        toggleCameraFeedDisplay(enabled: newValue)
-                    }
-            }
-            .padding(.horizontal)
-
-            // Camera Feed (only shows when enabled)
-            if showCameraFeed {
-                Group {
-                    if let image = vitalsProcessor.imageOutput {
-                        Image(uiImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                    } else {
-                        if #available(iOS 17.0, *) {
-                            ContentUnavailableView {
-                                Label("Camera Feed", systemImage: "camera.fill")
-                            } description: {
-                                if !isVitalMonitoringEnabled {
-                                    Text("Start monitoring to see live frames")
-                                } else {
-                                    Text("Starting camera feed...")
-                                }
-                            }
-                        } else {
-                            VStack(spacing: 8) {
-                                Image(systemName: "camera.fill")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.secondary)
-                                Text("Camera Feed")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                if !isVitalMonitoringEnabled {
-                                    Text("Start monitoring to see live frames")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                } else {
-                                    Text("Starting camera feed...")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                .animation(.none, value: isVitalMonitoringEnabled)
+                .gesture(
+                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                        .onEnded { value in
+                            let horizontal = value.translation.width
+                            let vertical = abs(value.translation.height)
+                            if horizontal > 30 && vertical < 40 { // right swipe
+                                isCameraFeedVisible.toggle()
+                                toggleCameraFeedDisplay(enabled: isCameraFeedVisible)
                             }
                         }
-                    }
-                }
-                .frame(height: 200)
-                .cornerRadius(8)
-            }
+                )
+                .frame(height: geo.size.height * 0.6)
 
-            Spacer()
+                // Instruction text under the camera frame
+                Text(isVitalMonitoringEnabled ? "Double tap to stop monitoring" : "Double tap to start monitoring")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+
+                ContinuousVitalsPlotView()
+                    .scaleEffect(0.8)
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding()
+        .onLongPressGesture {
+            sendGeminiRequest()
+            print("longpress");
+        }
+        .onTapGesture(count: 2) {
+            if !isVitalMonitoringEnabled {
+                isVitalMonitoringEnabled = true
+                startVitalsMonitoring()
+            } else {
+                isVitalMonitoringEnabled = false
+                stopVitalsMonitoring()
+            }
+            print("taptap");
+        }
+        .padding(.horizontal)
         .onDisappear {
             stopVitalsMonitoring()
         }
@@ -191,11 +220,22 @@ struct ContentView: View {
     /// Toggles camera feed display and starts processing if needed
     /// - Parameter enabled: When true, enables camera feed preview; when false, hides the camera feed
     private func toggleCameraFeedDisplay(enabled: Bool) {
-        // Enable image output if not enabled already
-        if enabled {
-            // this sets it for the shared instance of the sdk and will affect other parts of the app using the sdk
-            sdk.setImageOutputEnabled(enabled)
+        // Toggle between back and front camera each time this is called
+        isUsingBackCamera.toggle()
+
+        // Example SDK calls — replace with the correct API from SmartSpectraSwiftSDK if different
+        if isUsingBackCamera {
+            // Switch to back camera
+            sdk.setCameraPosition(.back)
+            print("Switching to back camera")
+        } else {
+            // Switch to front camera
+            sdk.setCameraPosition(.front)
+            print("Switching to front camera")
         }
 
+        // Optionally ensure image output is enabled when toggling
+        sdk.setImageOutputEnabled(true)
     }
 }
+
