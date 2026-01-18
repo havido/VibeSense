@@ -2,7 +2,7 @@
 Emotion Detector for Blind Accessibility
 ========================================
 This script uses your webcam to detect facial emotions of people in front of you,
-converts them to vibration patterns for haptic feedback, and now exposes a
+converts them to sound patterns, and exposes a
 Flask /gemini endpoint that can read the live analysis history (last 5 seconds)
 and ask Gemini for a single summarized emotion.
 
