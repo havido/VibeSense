@@ -187,8 +187,9 @@ struct ContentView: View {
     }
 
     func sendAveragesToServer() {
+        print("send averages")
         guard let pulseAvg = calculatePulseAverage(), let breathingAvg = calculateBreathingAverage() else { return }
-        guard let url = URL(string: "http://10.19.133.167:8080/biometrics") else { return }
+        guard let url = URL(string: "http://172.20.10.4:8080/biometrics") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -202,7 +203,10 @@ struct ContentView: View {
     }
     
     func sendGeminiRequest() {
-        guard let url = URL(string: "http://10.19.133.167:8080/gemini") else { return }
+        print("send gemini")
+        // 172.20.10.4
+        // 10.19.133.167:8080
+        guard let url = URL(string: "http://172.20.10.4:8080/gemini") else { return }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

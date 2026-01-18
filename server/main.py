@@ -113,9 +113,21 @@ def start_camera():
 def analyze_frame(DeepFace, frame):
     """Analyze a single frame for emotions."""
     try:
+        # Resize for consistency
+        frame_resized = cv2.resize(frame, (640, 480))
+
+        # Improve contrast
+        lab = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        frame_enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
         results = DeepFace.analyze(
-            frame, 
+            frame_enhanced, 
             actions=['emotion'],
+            detector_backend='ssd',  # More accurate face detection
             enforce_detection=False,  # Don't crash if no face found
             silent=True
         )
