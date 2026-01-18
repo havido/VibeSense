@@ -2,6 +2,7 @@
 UI Module for Emotion Detector
 ==============================
 Tkinter-based interface for configuration and live monitoring.
+Includes keyboard navigation with audio descriptions for accessibility.
 """
 
 import tkinter as tk
@@ -12,6 +13,8 @@ import threading
 import time
 from collections import deque
 from datetime import datetime
+import subprocess
+import platform
 
 
 class EmotionDetectorUI:
@@ -47,8 +50,16 @@ class EmotionDetectorUI:
         # History for statistics
         self.emotion_history = deque(maxlen=100)
         
+        # Keyboard navigation state
+        self.focused_control_index = 0
+        self.focusable_controls = []  # List of (widget, name, type) tuples
+        self.audio_enabled = True  # Enable audio descriptions
+        
         # Create UI components
         self._create_widgets()
+        
+        # Setup keyboard navigation
+        self._setup_keyboard_navigation()
         
         # Start update loop
         self._update_loop()
@@ -141,47 +152,71 @@ class EmotionDetectorUI:
         self.stats_label.pack(padx=10, pady=10, anchor=tk.W)
     
     def _create_settings_widgets(self, parent):
-        """Create settings control widgets."""
+        """Create settings control widgets with keyboard navigation."""
         import config
         
         # Detection interval
         tk.Label(parent, text="Detection Interval (s):", bg='#2b2b2b', fg='white', 
                 font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(10, 0))
         self.interval_var = tk.DoubleVar(value=config.DETECTION_INTERVAL)
-        interval_scale = tk.Scale(parent, from_=0.1, to=2.0, resolution=0.1, 
+        self.interval_scale = tk.Scale(parent, from_=0.1, to=2.0, resolution=0.1, 
                                   variable=self.interval_var, orient=tk.HORIZONTAL,
-                                  bg='#2b2b2b', fg='white', highlightthickness=0,
+                                  bg='#2b2b2b', fg='white', highlightthickness=2,
+                                  highlightbackground='#555555',
                                   command=self._on_interval_change)
-        interval_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.interval_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        # Make Up/Down navigate instead of adjusting slider value
+        # Add to focusable controls: (widget, name, type, get_value_func)
+        self.focusable_controls.append((self.interval_scale, "Detection Interval", "slider", 
+                                       lambda: f"{self.interval_var.get():.1f} seconds"))
         
         # Strong confidence threshold
         tk.Label(parent, text="Strong Confidence Threshold:", bg='#2b2b2b', fg='white', 
                 font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(0, 0))
         self.conf_thresh_var = tk.DoubleVar(value=config.STRONG_CONFIDENCE_THRESHOLD)
-        conf_scale = tk.Scale(parent, from_=0.1, to=1.0, resolution=0.05, 
+        self.conf_scale = tk.Scale(parent, from_=0.1, to=1.0, resolution=0.05, 
                               variable=self.conf_thresh_var, orient=tk.HORIZONTAL,
-                              bg='#2b2b2b', fg='white', highlightthickness=0,
+                              bg='#2b2b2b', fg='white', highlightthickness=2,
+                              highlightbackground='#555555',
                               command=self._on_threshold_change)
-        conf_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.conf_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        # Make Up/Down navigate instead of adjusting slider value
+        self.focusable_controls.append((self.conf_scale, "Confidence Threshold", "slider",
+                                       lambda: f"{self.conf_thresh_var.get():.0%}"))
         
         # Cooldown period
         tk.Label(parent, text="Signal Cooldown (s):", bg='#2b2b2b', fg='white', 
                 font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(0, 0))
         self.cooldown_var = tk.DoubleVar(value=config.SIGNAL_COOLDOWN_SECONDS)
-        cooldown_scale = tk.Scale(parent, from_=1.0, to=30.0, resolution=1.0, 
+        self.cooldown_scale = tk.Scale(parent, from_=1.0, to=30.0, resolution=1.0, 
                                   variable=self.cooldown_var, orient=tk.HORIZONTAL,
-                                  bg='#2b2b2b', fg='white', highlightthickness=0,
+                                  bg='#2b2b2b', fg='white', highlightthickness=2,
+                                  highlightbackground='#555555',
                                   command=self._on_cooldown_change)
-        cooldown_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.cooldown_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        # Make Up/Down navigate instead of adjusting slider value
+        self.focusable_controls.append((self.cooldown_scale, "Signal Cooldown", "slider",
+                                       lambda: f"{self.cooldown_var.get():.0f} seconds"))
         
         # Test buttons
         test_frame = tk.Frame(parent, bg='#2b2b2b')
         test_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        tk.Button(test_frame, text="Test Vibration 1", command=lambda: self._test_vibration(1),
-                 bg='#444444', fg='white', relief=tk.RAISED, padx=10, pady=5).pack(side=tk.LEFT, padx=2)
-        tk.Button(test_frame, text="Test Vibration 3", command=lambda: self._test_vibration(3),
-                 bg='#444444', fg='white', relief=tk.RAISED, padx=10, pady=5).pack(side=tk.LEFT, padx=2)
+        self.test1_btn = tk.Button(test_frame, text="Test Vibration 1", 
+                                   command=lambda: self._test_vibration(1),
+                                   bg='#444444', fg='white', relief=tk.RAISED, 
+                                   padx=10, pady=5, highlightthickness=2,
+                                   highlightbackground='#555555')
+        self.test1_btn.pack(side=tk.LEFT, padx=2)
+        self.focusable_controls.append((self.test1_btn, "Test Vibration 1", "button", None))
+        
+        self.test3_btn = tk.Button(test_frame, text="Test Vibration 3", 
+                                   command=lambda: self._test_vibration(3),
+                                   bg='#444444', fg='white', relief=tk.RAISED, 
+                                   padx=10, pady=5, highlightthickness=2,
+                                   highlightbackground='#555555')
+        self.test3_btn.pack(side=tk.LEFT, padx=2)
+        self.focusable_controls.append((self.test3_btn, "Test Vibration 3", "button", None))
     
     def _on_interval_change(self, value):
         """Update detection interval."""
@@ -308,6 +343,162 @@ class EmotionDetectorUI:
             self.log_text.delete("1.0", f"{len(lines)-200}.0")
         
         self.log_text.config(state=tk.DISABLED)
+    
+    def _setup_keyboard_navigation(self):
+        """Setup keyboard navigation with arrow keys."""
+        # Arrow keys for navigation - bind to root and all widget classes
+        self.root.bind('<Up>', lambda e: self._navigate_focus(-1) or 'break')
+        self.root.bind('<Down>', lambda e: self._navigate_focus(1) or 'break')
+        # Bind to Scale class (sliders) - this will override individual binds
+        self.root.bind_class('Scale', '<Up>', lambda e: self._navigate_focus(-1) or 'break')
+        self.root.bind_class('Scale', '<Down>', lambda e: self._navigate_focus(1) or 'break')
+        # Bind to Button class
+        self.root.bind_class('Button', '<Up>', lambda e: self._navigate_focus(-1) or 'break')
+        self.root.bind_class('Button', '<Down>', lambda e: self._navigate_focus(1) or 'break')
+        
+        # Left/Right for adjusting sliders - only when slider is focused
+        self.root.bind('<Left>', lambda e: self._handle_left_right(-1))
+        self.root.bind('<Right>', lambda e: self._handle_left_right(1))
+        self.root.bind_class('Scale', '<Left>', lambda e: self._handle_left_right(-1))
+        self.root.bind_class('Scale', '<Right>', lambda e: self._handle_left_right(1))
+        
+        # Space/Enter for activating buttons
+        self.root.bind('<space>', lambda e: self._activate_focused())
+        self.root.bind('<Return>', lambda e: self._activate_focused())
+        
+        # Tab as alternative navigation
+        self.root.bind('<Tab>', lambda e: self._navigate_focus(1))
+        self.root.bind('<Shift-Tab>', lambda e: self._navigate_focus(-1))
+        
+        # Set initial focus
+        if self.focusable_controls:
+            self._update_focus_display()
+    
+    def _navigate_focus(self, direction):
+        """Navigate focus between controls."""
+        if not self.focusable_controls:
+            return "break"
+        
+        # Remove focus from current control
+        self._clear_focus_display()
+        
+        # Move to next/previous control
+        self.focused_control_index = (self.focused_control_index + direction) % len(self.focusable_controls)
+        
+        # Update focus display and announce
+        self._update_focus_display()
+        
+        # Prevent default behavior
+        return "break"
+    
+    def _clear_focus_display(self):
+        """Clear visual focus from current control."""
+        if 0 <= self.focused_control_index < len(self.focusable_controls):
+            widget, _, _, _ = self.focusable_controls[self.focused_control_index]
+            if isinstance(widget, tk.Scale):
+                widget.config(highlightbackground='#555555')
+            elif isinstance(widget, tk.Button):
+                widget.config(highlightbackground='#555555')
+    
+    def _update_focus_display(self):
+        """Update visual focus and announce current control."""
+        if not self.focusable_controls or self.focused_control_index < 0:
+            return
+        
+        widget, name, control_type, get_value = self.focusable_controls[self.focused_control_index]
+        
+        # Highlight focused control
+        if isinstance(widget, tk.Scale):
+            widget.config(highlightbackground='#4CAF50')  # Green highlight
+            widget.focus_set()
+        elif isinstance(widget, tk.Button):
+            widget.config(highlightbackground='#4CAF50')
+            widget.focus_set()
+        
+        # Announce via audio
+        if control_type == "slider":
+            value_text = get_value() if get_value else ""
+            announcement = f"{name} slider, value: {value_text}. Use left and right arrows to adjust."
+        else:  # button
+            announcement = f"{name} button. Press Space or Enter to activate."
+        
+        self._announce(announcement)
+    
+    def _handle_left_right(self, direction):
+        """Handle left/right arrow keys - adjust slider only if slider is focused."""
+        if not self.focusable_controls or self.focused_control_index < 0:
+            return "break"
+        
+        widget, name, control_type, get_value = self.focusable_controls[self.focused_control_index]
+        
+        # Only adjust if a slider is focused
+        if control_type == "slider" and isinstance(widget, tk.Scale):
+            self._adjust_slider_value(widget, name, get_value, direction)
+        
+        # Prevent default slider behavior
+        return "break"
+    
+    def _adjust_slider_value(self, widget, name, get_value, direction):
+        """Adjust slider value."""
+        current = widget.get()
+        resolution = widget['resolution']
+        new_value = current + (direction * resolution)
+        
+        # Clamp to min/max
+        min_val = widget['from']
+        max_val = widget['to']
+        new_value = max(min_val, min(max_val, new_value))
+        
+        widget.set(new_value)
+        # Trigger the callback manually (they expect string from command callback)
+        if widget == self.interval_scale:
+            self._on_interval_change(str(new_value))
+        elif widget == self.conf_scale:
+            self._on_threshold_change(str(new_value))
+        elif widget == self.cooldown_scale:
+            self._on_cooldown_change(str(new_value))
+        
+        # Announce new value (throttled)
+        value_text = get_value() if get_value else f"{new_value:.2f}"
+        # Don't announce every tiny change - only log it
+        self.log(f"{name} adjusted to {value_text}")
+    
+    def _activate_focused(self):
+        """Activate the focused control (button press)."""
+        if not self.focusable_controls or self.focused_control_index < 0:
+            return
+        
+        widget, name, control_type, _ = self.focusable_controls[self.focused_control_index]
+        
+        if control_type == "button" and isinstance(widget, tk.Button):
+            widget.invoke()  # Simulate button click
+            self._announce(f"{name} activated")
+    
+    def _announce(self, message):
+        """Announce message via text-to-speech (non-blocking)."""
+        self.log(f"[Navigation] {message}")
+        
+        if self.audio_enabled:
+            try:
+                # Use threading to prevent blocking
+                def speak():
+                    try:
+                        if platform.system() == 'Darwin':  # macOS
+                            subprocess.Popen(['say', message], 
+                                           stdout=subprocess.DEVNULL, 
+                                           stderr=subprocess.DEVNULL,
+                                           start_new_session=True)
+                        elif platform.system() == 'Linux':
+                            subprocess.Popen(['espeak', message], 
+                                           stdout=subprocess.DEVNULL, 
+                                           stderr=subprocess.DEVNULL,
+                                           start_new_session=True)
+                    except:
+                        pass
+                
+                threading.Thread(target=speak, daemon=True).start()
+            except:
+                pass
     
     def _update_loop(self):
         """Non-blocking update loop for UI."""
