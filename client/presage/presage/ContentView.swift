@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var isUsingBackCamera: Bool = true
 
     init() {
-        let apiKey = "tdxQUC2abP82L6NgUSDGA9k7T5yzLvd139ePE6ln"
+        let apiKey = "k8iMqD6n2E9ej2k6yOsii7sxQrfjiJ71ybjz2FA8"
         sdk.setApiKey(apiKey)
         sdk.setCameraPosition(.back)
     }
