@@ -3,9 +3,12 @@
 
 deepface==0.0.89
 opencv-python==4.9.0.80
-numpy>=1.24.0,<2.0
+numpy>=1.24.0
 tensorflow>=2.15.0
 tf_keras>=2.15.0
 
 # Optional: For serial communication with Arduino/hardware
 pyserial==3.5
+
+# Optional: For UI (installed by default with Python, but explicitly listed here)
+Pillow>=10.0.0
