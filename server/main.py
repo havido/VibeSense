@@ -311,6 +311,5 @@ def main():
     hardware_bridge.cleanup()
     print("Done!")
 
-
 if __name__ == "__main__":
     main()

@@ -5,6 +5,7 @@ struct ContentView: View {
     @ObservedObject var sdk = SmartSpectraSwiftSDK.shared
     @ObservedObject var vitalsProcessor = SmartSpectraVitalsProcessor.shared
     @State private var isVitalMonitoringEnabled: Bool = false
+    @State private var showCameraFeed: Bool = false
     @State private var averagesTimer: Timer? = nil
 
     init() {
@@ -20,7 +21,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack {
-            GroupBox(label: Text("Vitals")) {
+            GroupBox(label: Text("VibeSense")) {
                 ContinuousVitalsPlotView()
                 Grid {
                     GridRow {
@@ -28,8 +29,6 @@ struct ContentView: View {
                     }
                     GridRow {
                         HStack {
-                            Text("Vitals Monitoring")
-                            Spacer()
                             Button(isVitalMonitoringEnabled ? "Stop": "Start") {
                                 isVitalMonitoringEnabled.toggle()
                                 if(isVitalMonitoringEnabled) {
@@ -58,6 +57,65 @@ struct ContentView: View {
                             .shadow(radius: 8)
                     }
                     .padding(.horizontal)
+            // Camera Preview Toggle
+            HStack {
+                Text("Camera Preview")
+                Spacer()
+                Toggle("", isOn: $showCameraFeed)
+                    .onChange(of: showCameraFeed) { newValue in
+                        toggleCameraFeedDisplay(enabled: newValue)
+                    }
+            }
+            .padding(.horizontal)
+
+            // Camera Feed (only shows when enabled)
+            if showCameraFeed {
+                Group {
+                    if let image = vitalsProcessor.imageOutput {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    } else {
+                        if #available(iOS 17.0, *) {
+                            ContentUnavailableView {
+                                Label("Camera Feed", systemImage: "camera.fill")
+                            } description: {
+                                if !isVitalMonitoringEnabled {
+                                    Text("Start monitoring to see live frames")
+                                } else {
+                                    Text("Starting camera feed...")
+                                }
+                            }
+                        } else {
+                            VStack(spacing: 8) {
+                                Image(systemName: "camera.fill")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.secondary)
+                                Text("Camera Feed")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                                if !isVitalMonitoringEnabled {
+                                    Text("Start monitoring to see live frames")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("Starting camera feed...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(height: 200)
+                .cornerRadius(8)
+            }
+
+            Spacer()
+        }
+        .padding()
+        .onDisappear {
+            stopVitalsMonitoring()
         }
     }
 
@@ -128,5 +186,16 @@ struct ContentView: View {
                 print("✅ Signal sent")
             }
         }.resume()
+    }
+
+    /// Toggles camera feed display and starts processing if needed
+    /// - Parameter enabled: When true, enables camera feed preview; when false, hides the camera feed
+    private func toggleCameraFeedDisplay(enabled: Bool) {
+        // Enable image output if not enabled already
+        if enabled {
+            // this sets it for the shared instance of the sdk and will affect other parts of the app using the sdk
+            sdk.setImageOutputEnabled(enabled)
+        }
+
     }
 }
