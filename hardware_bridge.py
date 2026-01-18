@@ -24,6 +24,18 @@ except ImportError:
 # Global serial connection
 serial_connection = None
 
+# Simple buzzer pulse patterns (milliseconds HIGH per pulse)
+# Tweak as needed to feel distinct on the active buzzer
+BUZZER_PATTERNS = {
+    "happy":    [120, 120, 200],        # short, upbeat chirps
+    "angry":    [300, 80, 300, 80, 300],# sharp triple blast
+    "sad":      [500, 200],             # long low tone with a tail
+    "surprise": [80, 80, 80, 400],      # quick triplet then hold
+    "fear":     [150, 150, 150, 150, 400],  # steady beeps then hold
+    "disgust":  [250, 100, 500],        # medium then long groan
+    "neutral":  []                      # no sound
+}
+
 
 def init_serial():
     """Initialize serial connection to Arduino/hardware."""
@@ -66,17 +78,26 @@ def send_vibration(vibration_count: int, emotion: str, confidence: float):
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
+    # Pick buzzer pattern; fall back to simple repeated beeps based on count
+    pattern = BUZZER_PATTERNS.get(emotion)
+    if pattern is None:
+        # unknown emotion: reuse count as N quick beeps
+        pattern = [150] * max(vibration_count, 1)
+    # Flatten to comma-separated millisecond pulses for the Arduino sketch
+    pattern_str = ",".join(str(p) for p in pattern if p > 0)
+
     # Create data packet
     data = {
         "timestamp": timestamp,
         "emotion": emotion,
-        "vibrations": vibration_count,
+        "buzzer_pattern": pattern,
         "confidence": round(confidence, 2)
     }
     
     # Output to console
     if config.OUTPUT_TO_CONSOLE:
-        print(f"[{timestamp}] {emotion.upper()} (confidence: {confidence:.0%}) -> {vibration_count} vibration(s)")
+        beeps = len(pattern)
+        print(f"[{timestamp}] {emotion.upper()} (confidence: {confidence:.0%}) -> {beeps} beep(s) [{pattern_str}]")
     
     # Output to file (for hardware team to read)
     if config.OUTPUT_TO_FILE:
@@ -89,9 +110,8 @@ def send_vibration(vibration_count: int, emotion: str, confidence: float):
     # Output to serial (for Arduino/hardware)
     if config.OUTPUT_TO_SERIAL and serial_connection:
         try:
-            # Send format: "V:3\n" means 3 vibrations
-            # Modify this format based on what your hardware expects
-            message = f"V:{vibration_count}\n"
+            # Send format: "B:120,120,200\n" (ms HIGH durations per pulse)
+            message = f"B:{pattern_str}\n"
             serial_connection.write(message.encode())
         except Exception as e:
             print(f"Warning: Could not send to serial: {e}")
@@ -108,36 +128,48 @@ def cleanup():
 
 
 # =============================================================================
-# FOR HARDWARE TEAMMATE: Example Arduino code to receive signals
+# Reference: Arduino code to receive signals
 # =============================================================================
 """
-// Arduino code to receive vibration signals
-// Upload this to your Arduino
-
-const int VIBRATION_PIN = 9;  // Pin connected to vibration motor
+// Active Buzzer Receiver for VibeRater (with debug)
+const uint8_t BUZZER_PIN = 9;
+const unsigned long GAP_MS = 150;
 
 void setup() {
-    Serial.begin(9600);
-    pinMode(VIBRATION_PIN, OUTPUT);
+  Serial.begin(9600);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  Serial.println("Ready for B:payload");
 }
 
 void loop() {
-    if (Serial.available() > 0) {
-        String data = Serial.readStringUntil('\\n');
-        
-        if (data.startsWith("V:")) {
-            int count = data.substring(2).toInt();
-            vibrateMotor(count);
-        }
+  if (Serial.available() > 0) {
+    String line = Serial.readStringUntil('\n');
+    line.trim();               // drops \r if present
+    Serial.print("RX: ");
+    Serial.println(line);
+    if (line.startsWith("B:")) {
+      playPattern(line.substring(2));
     }
+  }
 }
 
-void vibrateMotor(int count) {
-    for (int i = 0; i < count; i++) {
-        digitalWrite(VIBRATION_PIN, HIGH);
-        delay(200);  // Vibration duration
-        digitalWrite(VIBRATION_PIN, LOW);
-        delay(150);  // Pause between vibrations
+void playPattern(const String& payload) {
+  if (payload.length() == 0) return;  // ignore empty payloads
+  int start = 0;
+  while (start >= 0) {
+    int comma = payload.indexOf(',', start);
+    String part = (comma == -1) ? payload.substring(start) : payload.substring(start, comma);
+    part.trim();
+    unsigned long pulse = part.toInt();
+    if (pulse > 0) {
+      digitalWrite(BUZZER_PIN, HIGH);
+      delay(pulse);
+      digitalWrite(BUZZER_PIN, LOW);
+      delay(GAP_MS);
     }
+    if (comma == -1) break;
+    start = comma + 1;
+  }
 }
 """
