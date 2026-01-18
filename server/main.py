@@ -189,8 +189,14 @@ def gemini_endpoint():
             "message": f"No emotion samples in the last {window} seconds"
         }), 404
 
+    counts = Counter(emo for _, emo, _ in samples if emo)
     prompt, fallback_emotion = _build_gemini_prompt(samples)
+    proportion = counts.get(fallback_emotion, 0) / float(len(samples) or 1)
 
+    model_text = ""
+    signal_payload = None
+    source = "gemini"
+    error_msg = None
     try:
         client = _get_genai_client()
         response = client.models.generate_content(
@@ -202,19 +208,32 @@ def gemini_endpoint():
         one_word = model_text.split()[0] if model_text else fallback_emotion
     except Exception as e:
         # Fall back to the locally computed dominant emotion
-        return jsonify({
-            "status": "ok",
-            "emotion": fallback_emotion,
-            "source": "local_fallback",
-            "error": str(e)
-        }), 200
+        one_word = fallback_emotion
+        source = "local_fallback"
+        error_msg = str(e)
 
-    return jsonify({
+    if config.ENABLE_SIGNAL_ON_API:
+        vibrations = config.EMOTION_TO_VIBRATION.get(one_word, 0)
+        if vibrations > 0:
+            # Use proportion of samples as a rough confidence signal
+            signal_payload = hardware_bridge.send_vibration(
+                vibrations, one_word, max(proportion, 0.01)
+            )
+
+    response_payload = {
         "status": "ok",
         "emotion": one_word,
         "gemini_raw": model_text,
-        "samples_used": len(samples)
-    }), 200
+        "samples_used": len(samples),
+        "signal_triggered": bool(signal_payload),
+        "source": source
+    }
+    if error_msg:
+        response_payload["error"] = error_msg
+    if signal_payload:
+        response_payload["signal_payload"] = signal_payload
+
+    return jsonify(response_payload), 200
 
 
 @app.route("/biometrics", methods=["POST"])
@@ -341,8 +360,8 @@ def run_detection_loop(DeepFace, cap, ui=None, stop_event=None):
                 else:
                     print(f"[ANALYSIS {ts}] emotion=None     confidence=0%")
 
-                # Check sustained emotion condition only if not muted
-                if current_time >= mute_until and analysis_history:
+                # Check sustained emotion condition only if not muted and auto signaling enabled
+                if config.ENABLE_AUTO_SIGNALING and current_time >= mute_until and analysis_history:
                     with analysis_lock:
                         snapshot = list(analysis_history)
                     total = len(snapshot)
@@ -361,7 +380,6 @@ def run_detection_loop(DeepFace, cap, ui=None, stop_event=None):
                             # Only send if there is a non-zero mapping (neutral -> 0)
                             if vibrations > 0:
                                 hardware_bridge.send_vibration(vibrations, dominant_emotion, 1.0)
-                                # here
                                 mute_until = current_time + config.SIGNAL_COOLDOWN_SECONDS
                                 last_signal_text = f"{dominant_emotion.upper()} -> {vibrations} vibration(s)"
                                 last_signal_shown_at = current_time

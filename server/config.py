@@ -37,6 +37,12 @@ OUTPUT_TO_CONSOLE = True      # Print to terminal
 OUTPUT_TO_FILE = True         # Write to output.txt
 OUTPUT_TO_SERIAL = True      # Send to Arduino (enable when hardware ready)
 
+# Control when signals are emitted
+# - ENABLE_AUTO_SIGNALING: emit haptics as soon as sustained emotion detected
+# - ENABLE_SIGNAL_ON_API: emit haptics when /gemini is called
+ENABLE_AUTO_SIGNALING = False
+ENABLE_SIGNAL_ON_API = True
+
 # Sustained detection and cooldown settings
 # Emotion must be sustained within a sliding window to trigger output
 SUSTAIN_WINDOW_SECONDS = 1.5        # Analyze consistency over this window
