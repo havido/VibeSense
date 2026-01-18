@@ -12,3 +12,6 @@ pyserial==3.5
 
 # Optional: For UI (installed by default with Python, but explicitly listed here)
 Pillow>=10.0.0
+
+# Flask server for iOS app communication
+Flask>=3.0.0
