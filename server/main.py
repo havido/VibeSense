@@ -361,6 +361,7 @@ def run_detection_loop(DeepFace, cap, ui=None, stop_event=None):
                             # Only send if there is a non-zero mapping (neutral -> 0)
                             if vibrations > 0:
                                 hardware_bridge.send_vibration(vibrations, dominant_emotion, 1.0)
+                                # here
                                 mute_until = current_time + config.SIGNAL_COOLDOWN_SECONDS
                                 last_signal_text = f"{dominant_emotion.upper()} -> {vibrations} vibration(s)"
                                 last_signal_shown_at = current_time
@@ -487,7 +488,6 @@ def main():
     print("\nCleaning up...")
     hardware_bridge.cleanup()
     print("Done!")
-
 
 if __name__ == "__main__":
     main()

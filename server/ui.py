@@ -157,7 +157,7 @@ class EmotionDetectorUI:
         
         # Detection interval
         tk.Label(parent, text="Detection Interval (s):", bg='#2b2b2b', fg='white', 
-                font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(10, 0))
+                font=('Arial', 12)).pack(anchor=tk.W, padx=10, pady=(10, 0))
         self.interval_var = tk.DoubleVar(value=config.DETECTION_INTERVAL)
         self.interval_scale = tk.Scale(parent, from_=0.1, to=2.0, resolution=0.1, 
                                   variable=self.interval_var, orient=tk.HORIZONTAL,
@@ -172,7 +172,7 @@ class EmotionDetectorUI:
         
         # Strong confidence threshold
         tk.Label(parent, text="Strong Confidence Threshold:", bg='#2b2b2b', fg='white', 
-                font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(0, 0))
+                font=('Arial', 12)).pack(anchor=tk.W, padx=10, pady=(0, 0))
         self.conf_thresh_var = tk.DoubleVar(value=config.STRONG_CONFIDENCE_THRESHOLD)
         self.conf_scale = tk.Scale(parent, from_=0.1, to=1.0, resolution=0.05, 
                               variable=self.conf_thresh_var, orient=tk.HORIZONTAL,
@@ -184,39 +184,19 @@ class EmotionDetectorUI:
         self.focusable_controls.append((self.conf_scale, "Confidence Threshold", "slider",
                                        lambda: f"{self.conf_thresh_var.get():.0%}"))
         
-        # Cooldown period
-        tk.Label(parent, text="Signal Cooldown (s):", bg='#2b2b2b', fg='white', 
-                font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(0, 0))
-        self.cooldown_var = tk.DoubleVar(value=config.SIGNAL_COOLDOWN_SECONDS)
-        self.cooldown_scale = tk.Scale(parent, from_=1.0, to=30.0, resolution=1.0, 
-                                  variable=self.cooldown_var, orient=tk.HORIZONTAL,
-                                  bg='#2b2b2b', fg='white', highlightthickness=2,
-                                  highlightbackground='#555555',
-                                  command=self._on_cooldown_change)
-        self.cooldown_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
-        # Make Up/Down navigate instead of adjusting slider value
-        self.focusable_controls.append((self.cooldown_scale, "Signal Cooldown", "slider",
-                                       lambda: f"{self.cooldown_var.get():.0f} seconds"))
-        
-        # Test buttons
-        test_frame = tk.Frame(parent, bg='#2b2b2b')
-        test_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        self.test1_btn = tk.Button(test_frame, text="Test Vibration 1", 
-                                   command=lambda: self._test_vibration(1),
-                                   bg='#444444', fg='white', relief=tk.RAISED, 
-                                   padx=10, pady=5, highlightthickness=2,
-                                   highlightbackground='#555555')
-        self.test1_btn.pack(side=tk.LEFT, padx=2)
-        self.focusable_controls.append((self.test1_btn, "Test Vibration 1", "button", None))
-        
-        self.test3_btn = tk.Button(test_frame, text="Test Vibration 3", 
-                                   command=lambda: self._test_vibration(3),
-                                   bg='#444444', fg='white', relief=tk.RAISED, 
-                                   padx=10, pady=5, highlightthickness=2,
-                                   highlightbackground='#555555')
-        self.test3_btn.pack(side=tk.LEFT, padx=2)
-        self.focusable_controls.append((self.test3_btn, "Test Vibration 3", "button", None))
+        # Cooldown period (COMMENTED OUT - uncomment if needed)
+        # tk.Label(parent, text="Signal Cooldown (s):", bg='#2b2b2b', fg='white', 
+        #         font=('Arial', 9)).pack(anchor=tk.W, padx=10, pady=(0, 0))
+        # self.cooldown_var = tk.DoubleVar(value=config.SIGNAL_COOLDOWN_SECONDS)
+        # self.cooldown_scale = tk.Scale(parent, from_=1.0, to=30.0, resolution=1.0, 
+        #                           variable=self.cooldown_var, orient=tk.HORIZONTAL,
+        #                           bg='#2b2b2b', fg='white', highlightthickness=2,
+        #                           highlightbackground='#555555',
+        #                           command=self._on_cooldown_change)
+        # self.cooldown_scale.pack(fill=tk.X, padx=10, pady=(0, 10))
+        # # Make Up/Down navigate instead of adjusting slider value
+        # self.focusable_controls.append((self.cooldown_scale, "Signal Cooldown", "slider",
+        #                                lambda: f"{self.cooldown_var.get():.0f} seconds"))
     
     def _on_interval_change(self, value):
         """Update detection interval."""
@@ -230,17 +210,13 @@ class EmotionDetectorUI:
         config.STRONG_CONFIDENCE_THRESHOLD = float(value)
         self.log(f"Confidence threshold set to {float(value):.0%}")
     
-    def _on_cooldown_change(self, value):
-        """Update cooldown period."""
-        import config
-        config.SIGNAL_COOLDOWN_SECONDS = float(value)
-        self.log(f"Cooldown set to {value}s")
+    # Cooldown change handler (COMMENTED OUT - uncomment if Signal Cooldown slider is enabled)
+    # def _on_cooldown_change(self, value):
+    #     """Update cooldown period."""
+    #     import config
+    #     config.SIGNAL_COOLDOWN_SECONDS = float(value)
+    #     self.log(f"Cooldown set to {value}s")
     
-    def _test_vibration(self, count):
-        """Test vibration manually."""
-        import hardware_bridge
-        hardware_bridge.send_vibration(count, "test", 1.0)
-        self.log(f"Test: Sent {count} vibration(s)")
     
     def update_video(self, frame):
         """Update the video display with a new frame."""
@@ -396,9 +372,9 @@ class EmotionDetectorUI:
         if 0 <= self.focused_control_index < len(self.focusable_controls):
             widget, _, _, _ = self.focusable_controls[self.focused_control_index]
             if isinstance(widget, tk.Scale):
-                widget.config(highlightbackground='#555555')
+                widget.config(highlightbackground='#555555', highlightthickness=2)
             elif isinstance(widget, tk.Button):
-                widget.config(highlightbackground='#555555')
+                widget.config(highlightbackground='#555555', highlightthickness=2)
     
     def _update_focus_display(self):
         """Update visual focus and announce current control."""
@@ -409,10 +385,10 @@ class EmotionDetectorUI:
         
         # Highlight focused control
         if isinstance(widget, tk.Scale):
-            widget.config(highlightbackground='#4CAF50')  # Green highlight
+            widget.config(highlightbackground='green', highlightthickness=3)  # Green highlight
             widget.focus_set()
         elif isinstance(widget, tk.Button):
-            widget.config(highlightbackground='#4CAF50')
+            widget.config(highlightbackground='green', highlightthickness=3)
             widget.focus_set()
         
         # Announce via audio
@@ -455,8 +431,8 @@ class EmotionDetectorUI:
             self._on_interval_change(str(new_value))
         elif widget == self.conf_scale:
             self._on_threshold_change(str(new_value))
-        elif widget == self.cooldown_scale:
-            self._on_cooldown_change(str(new_value))
+        # elif widget == self.cooldown_scale:
+        #     self._on_cooldown_change(str(new_value))
         
         # Announce new value (throttled)
         value_text = get_value() if get_value else f"{new_value:.2f}"

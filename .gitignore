@@ -15,3 +15,5 @@ build/
 # Swift Package Manager
 .swiftpm/
 .build/
+
+client/presage/.DS_Store
