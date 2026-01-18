@@ -2,3 +2,16 @@
 __pycache__/
 *.pyc
 .env
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+*.xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+
+# Swift Package Manager
+.swiftpm/
+.build/
