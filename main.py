@@ -13,12 +13,21 @@ Press Ctrl+C in terminal to stop
 import cv2
 import time
 import sys
+import threading
 from collections import deque, Counter
 from datetime import datetime
 
 # Import our modules
 import config
 import hardware_bridge
+
+# Try to import UI (requires Pillow for PIL)
+try:
+    from PIL import Image, ImageTk
+    UI_AVAILABLE = True
+except ImportError:
+    UI_AVAILABLE = False
+    print("Note: UI not available. Install Pillow: pip install Pillow")
 
 
 def load_emotion_detector():
@@ -104,28 +113,15 @@ def draw_overlay(frame, signal_text: str | None):
     return frame
 
 
-def main():
-    """Main function to run the emotion detector."""
-    
-    print("\n" + "="*60)
-    print("   EMOTION DETECTOR FOR BLIND ACCESSIBILITY")
-    print("="*60 + "\n")
-    
-    # Load the emotion detection model
-    DeepFace = load_emotion_detector()
-    
-    # Initialize hardware connection (if enabled)
-    hardware_bridge.init_serial()
-    
-    # Start the camera
-    cap = start_camera()
-    
+def run_detection_loop(DeepFace, cap, ui=None, stop_event=None):
+    """Run the main emotion detection loop in a separate thread."""
     print("\n" + "-"*60)
     print("RUNNING - Point camera at a face to detect emotions")
     print("-"*60 + "\n")
     
     last_detection_time = 0
-    show_window = True
+    last_video_update = 0
+    show_cv_window = False  # Use UI instead of cv2.imshow
 
     # Sliding window of recent analyses: (timestamp, emotion, confidence)
     analysis_history: deque[tuple[float, str | None, float]] = deque()
@@ -138,16 +134,24 @@ def main():
     last_signal_shown_at = 0.0
     
     try:
-        while True:
+        while not (stop_event and stop_event.is_set()):
             # Capture frame
             ret, frame = cap.read()
             if not ret:
                 print("Warning: Could not read frame from camera")
+                if ui:
+                    ui.log("Warning: Could not read frame from camera")
+                time.sleep(0.1)
                 continue
             
             current_time = time.time()
             emotion = None
             confidence = 0.0
+            
+            # Update UI with video frame (limit to ~30fps for performance)
+            if ui and (current_time - last_video_update >= 0.033):
+                ui.update_video(frame)
+                last_video_update = current_time
             
             # Only analyze at specified interval (to save CPU)
             if current_time - last_detection_time >= config.DETECTION_INTERVAL:
@@ -155,6 +159,10 @@ def main():
 
                 # Analyze the frame for emotions
                 emotion, confidence = analyze_frame(DeepFace, frame)
+
+                # Update UI with current emotion
+                if ui:
+                    ui.update_emotion(emotion, confidence)
 
                 # Record analysis result into sliding window
                 analysis_history.append((current_time, emotion, float(confidence or 0.0)))
@@ -167,6 +175,8 @@ def main():
                 ts = datetime.now().strftime("%H:%M:%S")
                 if emotion:
                     print(f"[ANALYSIS {ts}] emotion={emotion:>8}  confidence={confidence:.0%}")
+                    if ui:
+                        ui.log(f"Detected: {emotion} ({confidence:.0%})")
                 else:
                     print(f"[ANALYSIS {ts}] emotion=None     confidence=0%")
 
@@ -189,41 +199,117 @@ def main():
                             if vibrations > 0:
                                 hardware_bridge.send_vibration(vibrations, dominant_emotion, 1.0)
                                 mute_until = current_time + config.SIGNAL_COOLDOWN_SECONDS
-                                last_signal_text = f"SIGNAL: {dominant_emotion.upper()} -> {vibrations} vibration(s)"
+                                last_signal_text = f"{dominant_emotion.upper()} -> {vibrations} vibration(s)"
                                 last_signal_shown_at = current_time
+                                
+                                if ui:
+                                    ui.update_signal(last_signal_text)
+                                    ui.log(f"SIGNAL: {last_signal_text}")
             
-            # Try to show video window (optional - for debugging)
-            if show_window:
+            # Fallback: show OpenCV window if UI not available
+            if not ui and show_cv_window:
                 try:
-                    # Only show signal banner for ~1.5s after it fires
                     signal_text = None
                     if last_signal_text and (current_time - last_signal_shown_at) <= 1.5:
                         signal_text = last_signal_text
-                    else:
-                        last_signal_text = None
                     display_frame = draw_overlay(frame.copy(), signal_text)
                     cv2.imshow('Emotion Detector', display_frame)
-                    
-                    # Check for quit key
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q') or key == ord('Q'):
-                        print("\nQuitting...")
                         break
-                except Exception as e:
-                    # If display fails (headless system), continue without it
-                    show_window = False
-                    print("Note: Running in headless mode (no display window)")
+                except Exception:
+                    show_cv_window = False
+            
+            # Small sleep to prevent tight loop
+            time.sleep(0.01)
     
-    except KeyboardInterrupt:
-        print("\n\nStopped by user (Ctrl+C)")
+    except Exception as e:
+        print(f"\n[ERROR] Detection loop error: {e}")
+        if ui:
+            ui.log(f"ERROR: {e}")
     
     finally:
         # Cleanup
-        print("\nCleaning up...")
+        print("\nStopping detection loop...")
         cap.release()
-        cv2.destroyAllWindows()
-        hardware_bridge.cleanup()
-        print("Done!")
+        if not ui:
+            cv2.destroyAllWindows()
+
+
+def main():
+    """Main function to run the emotion detector."""
+    
+    print("\n" + "="*60)
+    print("   EMOTION DETECTOR FOR BLIND ACCESSIBILITY")
+    print("="*60 + "\n")
+    
+    # Load the emotion detection model
+    DeepFace = load_emotion_detector()
+    
+    # Initialize hardware connection (if enabled)
+    serial_connected = hardware_bridge.init_serial()
+    
+    # Start the camera
+    cap = start_camera()
+    
+    # Initialize UI if available
+    ui = None
+    stop_event = None
+    detection_thread = None
+    
+    if UI_AVAILABLE:
+        try:
+            print("[UI] Initializing UI...")
+            from ui import EmotionDetectorUI
+            ui = EmotionDetectorUI()
+            print("[UI] UI window created! Check for 'VibeSense - Emotion Detector' window.")
+            ui.set_serial_connected(serial_connected)
+            ui.log("Application started")
+            ui.log(f"Camera index: {config.CAMERA_INDEX}")
+            if config.OUTPUT_TO_SERIAL:
+                ui.log(f"Serial port: {config.SERIAL_PORT}")
+            
+            stop_event = threading.Event()
+            
+            # Start detection in separate thread
+            def ui_quit_callback(action):
+                if action == 'quit':
+                    stop_event.set()
+            
+            ui.update_callback = ui_quit_callback
+            
+            detection_thread = threading.Thread(
+                target=run_detection_loop,
+                args=(DeepFace, cap, ui, stop_event),
+                daemon=True
+            )
+            detection_thread.start()
+            
+            # Run UI in main thread (Tkinter requirement)
+            ui.run()
+            
+        except Exception as e:
+            print(f"Warning: Could not start UI: {e}")
+            print("Falling back to terminal mode...")
+            ui = None
+    
+    # Fallback: run detection in main thread if no UI
+    if not ui:
+        try:
+            run_detection_loop(DeepFace, cap, ui=None, stop_event=None)
+        except KeyboardInterrupt:
+            print("\n\nStopped by user (Ctrl+C)")
+    
+    # Cleanup
+    if stop_event:
+        stop_event.set()
+    
+    if detection_thread:
+        detection_thread.join(timeout=2.0)
+    
+    print("\nCleaning up...")
+    hardware_bridge.cleanup()
+    print("Done!")
 
 
 if __name__ == "__main__":
