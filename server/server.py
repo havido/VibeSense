@@ -7,6 +7,13 @@ and processes it for the emotion detection system.
 Run with: python server.py
 """
 
+# get data from main.py (emotions) in the past 5 seconds. 
+# get data from biometrics endpoint
+# put all these in the prompt to gemini api
+
+import os
+from dotenv import load_dotenv
+from google import genai
 from flask import Flask, request, jsonify
 from datetime import datetime
 
@@ -81,6 +88,46 @@ def receive_biometrics():
             "status": "error",
             "message": str(e)
         }), 500
+        
+load_dotenv()  # ensure .env is read when running locally
+
+def _get_genai_client():
+    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("api_key")
+    if not api_key:
+        raise ValueError("Missing GOOGLE_API_KEY (or api_key) environment variable for Gemini.")
+    return genai.Client(api_key=api_key)
+
+@app.route('/gemini', methods=['POST'])
+def call_gemini():
+    """
+    POST endpoint to proxy a Gemini text request.
+    Expected JSON: { "prompt": "text to send to Gemini" }
+    """
+    try:
+        data = request.get_json() or {}
+        prompt = data.get("prompt")
+        if not prompt:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required field: prompt"
+            }), 400
+
+        client = _get_genai_client()
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=prompt
+        )
+
+        return jsonify({
+            "status": "success",
+            "response": getattr(response, "text", None)
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 if __name__ == '__main__':
     print("=" * 50)
@@ -90,6 +137,7 @@ if __name__ == '__main__':
     print("  POST /biometrics - Send pulse and breathing data")
     print("  GET  /biometrics - Get latest biometric data")
     print("  GET  /health     - Health check")
+    print("  GET  /gemini     - Gemini")
     print("\n" + "=" * 50)
     
     # Run on all interfaces so iOS device can connect
