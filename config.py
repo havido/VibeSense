@@ -29,13 +29,13 @@ CAMERA_INDEX = 0  # Usually 0 for built-in webcam, 1 for external
 
 # Hardware communication settings
 # Your teammate can modify these for their setup
-SERIAL_PORT = 'COM3'  # Windows COM port for Arduino
+SERIAL_PORT = 'COM7'  # Windows COM port for Arduino
 SERIAL_BAUD_RATE = 9600
 
 # Output modes (can enable multiple)
 OUTPUT_TO_CONSOLE = True      # Print to terminal
 OUTPUT_TO_FILE = True         # Write to output.txt
-OUTPUT_TO_SERIAL = False      # Send to Arduino (enable when hardware ready)
+OUTPUT_TO_SERIAL = True      # Send to Arduino (enable when hardware ready)
 
 # Sustained detection and cooldown settings
 # Emotion must be sustained within a sliding window to trigger output
