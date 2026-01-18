@@ -12,14 +12,9 @@ struct ContentView: View {
     @State private var isUsingBackCamera: Bool = true
 
     init() {
-        // (Required) Authentication. Only need to use one of the two options: API Key or Oauth below
-        // Authentication with Oauth currently only supported for apps in testflight/appstore
-        // Option 1: (authentication with api key) set apiKey. API key from https://physiology.presagetech.com. Leave default or remove if you want to use oauth. Oauth overrides api key
         let apiKey = "tdxQUC2abP82L6NgUSDGA9k7T5yzLvd139ePE6ln"
         sdk.setApiKey(apiKey)
-
-        // Option 2: (Oauth) If you want to use Oauth, copy the Oauth config from PresageTech's developer portal (<https://physiology.presagetech.com/>) to your app's root.
-        // No additional code needed for Oauth
+        sdk.setCameraPosition(.back)
     }
 
     var body: some View {
@@ -80,38 +75,8 @@ struct ContentView: View {
                             .clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         )
-                    
-                    // Toggle button in top-right corner
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Button(action: {
-                                isCameraFeedVisible.toggle()
-                                toggleCameraFeedDisplay(enabled: isCameraFeedVisible)
-                            }) {
-                                Image(systemName: isCameraFeedVisible ? "eye.slash" : "eye")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .padding(8)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(8)
                 }
                 .animation(.none, value: isVitalMonitoringEnabled)
-                .gesture(
-                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                        .onEnded { value in
-                            let horizontal = value.translation.width
-                            let vertical = abs(value.translation.height)
-                            if horizontal > 30 && vertical < 40 { // right swipe
-                                isCameraFeedVisible.toggle()
-                                toggleCameraFeedDisplay(enabled: isCameraFeedVisible)
-                            }
-                        }
-                )
                 .frame(height: geo.size.height * 0.6)
 
                 // Instruction text under the camera frame
@@ -227,19 +192,30 @@ struct ContentView: View {
         // Toggle between back and front camera each time this is called
         isUsingBackCamera.toggle()
 
-        // Example SDK calls — replace with the correct API from SmartSpectraSwiftSDK if different
+        // Temporarily disable image output to avoid conflicts while switching
+        sdk.setImageOutputEnabled(false)
+
+        // If processing is ongoing, stop and restart around the camera switch
+        let wasMonitoring = isVitalMonitoringEnabled
+        if wasMonitoring {
+            vitalsProcessor.stopProcessing()
+        }
+
         if isUsingBackCamera {
-            // Switch to back camera
             sdk.setCameraPosition(.back)
             print("Switching to back camera")
         } else {
-            // Switch to front camera
             sdk.setCameraPosition(.front)
             print("Switching to front camera")
         }
 
-        // Optionally ensure image output is enabled when toggling
+        // Re-enable image output
         sdk.setImageOutputEnabled(true)
+
+        // Resume processing if it was active
+        if wasMonitoring {
+            vitalsProcessor.startProcessing()
+        }
     }
 }
 
